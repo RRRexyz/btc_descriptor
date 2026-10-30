@@ -1,5 +1,14 @@
 #include "include/btc.h"
 
+// Ceres >= 2.1 replaced LocalParameterization with Manifold.
+// Keep the code buildable against both the old (e.g. 1.14) and new APIs.
+#if CERES_VERSION_MAJOR > 2 ||                                                 \
+    (CERES_VERSION_MAJOR == 2 && CERES_VERSION_MINOR >= 1)
+#define BTC_CERES_HAS_MANIFOLD 1
+#else
+#define BTC_CERES_HAS_MANIFOLD 0
+#endif
+
 void load_config_setting(std::string &config_file,
                          ConfigSetting &config_setting) {
   cv::FileStorage fSettings(config_file, cv::FileStorage::READ);
@@ -175,7 +184,7 @@ void publish_binary(const std::vector<BinaryDescriptor> &binary_list,
   text.type = visualization_msgs::Marker::TEXT_VIEW_FACING;
   text.action = visualization_msgs::Marker::ADD;
   text.ns = text_ns;
-  text.color.a = 0.8;  // Don't forget to set the alpha!
+  text.color.a = 0.8; // Don't forget to set the alpha!
   text.scale.z = 0.08;
   text.pose.orientation.w = 1.0;
   text.header.frame_id = "camera_init";
@@ -426,8 +435,8 @@ void publish_std(const std::vector<std::pair<BTC, BTC>> &match_std_list,
   ma_line.markers.clear();
 }
 
-double calc_triangle_dis(
-    const std::vector<std::pair<BTC, BTC>> &match_std_list) {
+double
+calc_triangle_dis(const std::vector<std::pair<BTC, BTC>> &match_std_list) {
   double mean_triangle_dis = 0;
   for (auto var : match_std_list) {
     mean_triangle_dis += (var.first.triangle_ - var.second.triangle_).norm() /
@@ -441,8 +450,8 @@ double calc_triangle_dis(
   return mean_triangle_dis;
 }
 
-double calc_binary_similaity(
-    const std::vector<std::pair<BTC, BTC>> &match_std_list) {
+double
+calc_binary_similaity(const std::vector<std::pair<BTC, BTC>> &match_std_list) {
   double mean_binary_similarity = 0;
   for (auto var : match_std_list) {
     mean_binary_similarity +=
@@ -512,7 +521,7 @@ void pubPlane(const ros::Publisher &plane_pub, const std::string plane_ns,
   plane.scale.x = 3.0 * radius;
   plane.scale.y = 3.0 * radius;
   plane.scale.z = 0.1;
-  plane.color.a = 0.8;  // 0.8
+  plane.color.a = 0.8; // 0.8
   plane.color.r = fabs(rgb(0));
   plane.color.g = fabs(rgb(1));
   plane.color.b = fabs(rgb(2));
@@ -522,7 +531,7 @@ void pubPlane(const ros::Publisher &plane_pub, const std::string plane_ns,
 
 void BtcDescManager::GenerateBtcDescs(
     const pcl::PointCloud<pcl::PointXYZI>::Ptr &input_cloud, const int frame_id,
-    std::vector<BTC> &btcs_vec) {  // step1, voxelization and plane dection
+    std::vector<BTC> &btcs_vec) { // step1, voxelization and plane dection
   std::unordered_map<VOXEL_LOC, OctoTree *> voxel_map;
   init_voxel_map(input_cloud, voxel_map);
   pcl::PointCloud<pcl::PointXYZINormal>::Ptr plane_cloud(
@@ -673,7 +682,12 @@ void BtcDescManager::PlaneGeomrtricIcp(
     input_cloud->push_back(pi);
   }
   kd_tree->setInputCloud(input_cloud);
+#if BTC_CERES_HAS_MANIFOLD
   ceres::Manifold *quaternion_manifold = new ceres::EigenQuaternionManifold;
+#else
+  ceres::LocalParameterization *quaternion_manifold =
+      new ceres::EigenQuaternionParameterization;
+#endif
   ceres::Problem problem;
   ceres::LossFunction *loss_function = nullptr;
   Eigen::Matrix3d rot = transform.second;
@@ -806,7 +820,8 @@ void BtcDescManager::get_project_plane(
       origin_list.push_back(iter->second->plane_ptr_);
     }
   }
-  for (size_t i = 0; i < origin_list.size(); i++) origin_list[i]->id_ = 0;
+  for (size_t i = 0; i < origin_list.size(); i++)
+    origin_list[i]->id_ = 0;
   int current_id = 1;
   for (auto iter = origin_list.end() - 1; iter != origin_list.begin(); iter--) {
     for (auto iter2 = origin_list.begin(); iter2 != iter; iter2++) {
@@ -841,7 +856,8 @@ void BtcDescManager::get_project_plane(
   for (size_t i = 0; i < origin_list.size(); i++) {
     auto it =
         std::find(merge_flag.begin(), merge_flag.end(), origin_list[i]->id_);
-    if (it != merge_flag.end()) continue;
+    if (it != merge_flag.end())
+      continue;
     if (origin_list[i]->id_ == 0) {
       continue;
     }
@@ -849,7 +865,8 @@ void BtcDescManager::get_project_plane(
     (*merge_plane) = (*origin_list[i]);
     bool is_merge = false;
     for (size_t j = 0; j < origin_list.size(); j++) {
-      if (i == j) continue;
+      if (i == j)
+        continue;
       if (origin_list[j]->id_ == origin_list[i]->id_) {
         is_merge = true;
         Eigen::Matrix3d P_PT1 =
@@ -914,7 +931,8 @@ void BtcDescManager::merge_plane(
     merge_plane_list = origin_list;
     return;
   }
-  for (size_t i = 0; i < origin_list.size(); i++) origin_list[i]->id_ = 0;
+  for (size_t i = 0; i < origin_list.size(); i++)
+    origin_list[i]->id_ = 0;
   int current_id = 1;
   for (auto iter = origin_list.end() - 1; iter != origin_list.begin(); iter--) {
     for (auto iter2 = origin_list.begin(); iter2 != iter; iter2++) {
@@ -948,7 +966,8 @@ void BtcDescManager::merge_plane(
   for (size_t i = 0; i < origin_list.size(); i++) {
     auto it =
         std::find(merge_flag.begin(), merge_flag.end(), origin_list[i]->id_);
-    if (it != merge_flag.end()) continue;
+    if (it != merge_flag.end())
+      continue;
     if (origin_list[i]->id_ == 0) {
       merge_plane_list.push_back(origin_list[i]);
       continue;
@@ -957,7 +976,8 @@ void BtcDescManager::merge_plane(
     (*merge_plane) = (*origin_list[i]);
     bool is_merge = false;
     for (size_t j = 0; j < origin_list.size(); j++) {
-      if (i == j) continue;
+      if (i == j)
+        continue;
       if (origin_list[j]->id_ == origin_list[i]->id_) {
         is_merge = true;
         Eigen::Matrix3d P_PT1 =
@@ -1029,6 +1049,8 @@ void BtcDescManager::binary_extractor(
     if (proj_normal.z() < 0) {
       proj_normal = -proj_normal;
     }
+    // 这个地方理论上来说应该是
+    // (proj_normal - last_normal).norm() > 0.3，如果系统效果一般可以试试改这里
     if ((proj_normal - last_normal).norm() < 0.3 ||
         (proj_normal + last_normal).norm() > 0.3) {
       last_normal = proj_normal;
@@ -1594,7 +1616,7 @@ void BtcDescManager::candidate_selector(
         BTC_LOC best_position;
         double dis_threshold =
             descriptor.triangle_.norm() *
-            config_setting_.rough_dis_threshold_;  // old 0.005
+            config_setting_.rough_dis_threshold_; // old 0.005
         for (auto voxel_inc : voxel_round) {
           position.x = (int)(descriptor.triangle_[0] + voxel_inc[0]);
           position.y = (int)(descriptor.triangle_[1] + voxel_inc[1]);
@@ -1817,8 +1839,8 @@ void BtcDescManager::triangle_solver(std::pair<BTC, BTC> &std_pair,
   ref.col(1) = std_pair.second.binary_B_.location_ - std_pair.second.center_;
   ref.col(2) = std_pair.second.binary_C_.location_ - std_pair.second.center_;
   Eigen::Matrix3d covariance = src * ref.transpose();
-  Eigen::JacobiSVD<Eigen::MatrixXd> svd(
-      covariance, Eigen::ComputeThinU | Eigen::ComputeThinV);
+  Eigen::JacobiSVD<Eigen::MatrixXd> svd(covariance, Eigen::ComputeThinU |
+                                                        Eigen::ComputeThinV);
   Eigen::Matrix3d V = svd.matrixV();
   Eigen::Matrix3d U = svd.matrixU();
   rot = V * U.transpose();
